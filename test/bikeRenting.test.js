@@ -30,9 +30,7 @@ const { developmentChains } = require("../helper-hardhat-config");
             await bikeRenting.listBikes(bikeModel, bikeColor);
             // Checking Is bike get listed
             const listedBike = await bikeRenting.getBike(bikeModel);
-            // console.log("listedBike => ", listedBike);
-            // console.log("bikeModel => ", listedBike.bikeStatus);
-            // console.log("bikeColor => ", listedBike.color);
+            
             assert.equal(listedBike.bikeStatus, 0);
             assert.equal(listedBike.color, bikeColor);
           });
