@@ -20,88 +20,139 @@ const { developmentChains } = require("../helper-hardhat-config");
           const extraAmount = await bikeRenting.getExtraAmount();
           assert.equal(amount.toString(), "1");
           assert.equal(extraAmount.toString(), "1");
-        });
-      });
-
-      describe("RentBike", () => {
-        it("reverts when not sent enough amount", async () => {
-          expect(bikeRenting.rentBike()).to.be.revertedWith(
-            "BikeRenting__payWithExtraAmount"
-          );
-        });
-        it("emits an event", async () => {
-          const amount = await bikeRenting.getAmount();
-          const extraAmount = await bikeRenting.getExtraAmount();
-          expect(bikeRenting.rentBike({ value: amount + extraAmount })).to.emit(
-            "BikeRented"
-          );
-        });
-        it("gets the bike status", async () => {
-          expect(bikeRenting.getBikeStatus()).to.be.revertedWith(
-            "BikeRenting__AlreadyOnRent"
-          );
-        });
-        it("reverts when there is no money", async () => {
-          expect(bikeRenting.withdraw()).to.be.revertedWith(
-            "BikeRenting__TransferFailed"
-          );
-
-          const endingBalance = await bikeRenting.provider.getBalance(
-            bikeRenting.address
-          );
-          console.log(endingBalance);
-          assert.equal(endingBalance, 0);
+          //assert.equal(bikeRenting.getOwner(), deployer.address);
         });
 
-        it("withdraw Eth from contract", async () => {
-          const amount = await bikeRenting.getAmount();
-          const extraAmount = await bikeRenting.getExtraAmount();
-
-          const rent = await bikeRenting.rentBike(10, "", {
-            value: amount + extraAmount,
+        describe("ListBike", () => {
+          const bikeModel = 1;
+          const bikeColor = "red";
+          it("list bikes", async () => {
+            await bikeRenting.listBikes(bikeModel, bikeColor);
+            // Checking Is bike get listed
+            const listedBike = await bikeRenting.getBike(bikeModel);
+            // console.log("listedBike => ", listedBike);
+            // console.log("bikeModel => ", listedBike.bikeStatus);
+            // console.log("bikeColor => ", listedBike.color);
+            assert.equal(listedBike.bikeStatus, 0);
+            assert.equal(listedBike.color, bikeColor);
           });
-
-          const startingContractBalance = await bikeRenting.provider.getBalance(
-            bikeRenting.address
-          );
-          const startingDeployerBalance = await bikeRenting.provider.getBalance(
-            deployer.address
-          );
-
-          // Act
-          const txResponse = await bikeRenting.withdraw();
-          const txReceipt = await txResponse.wait(1);
-          const { gasUsed, effectiveGasPrice } = txReceipt;
-          const gasCost = gasUsed.mul(effectiveGasPrice).toString();
-
-          const endingContractBalance = await bikeRenting.provider.getBalance(
-            bikeRenting.address
-          );
-          const endingDeployerBalance = await bikeRenting.provider.getBalance(
-            deployer.address
-          );
-          // console.log("starting Contract balance => ", startingContractBalance.toString());
-          // console.log("ending Contract balance => ", endingDeployerBalance.toString());
-          // console.log("starting Deployer balance => ", startingDeployerBalance.toString());
-          // console.log("ending Deployer balance => ", endingDeployerBalance.toString());
-          // console.log("Gas Cost => ", gasCost);
-
-          // console.log("Adding startingContractBalance with deployerBalance => ",startingContractBalance.add(startingDeployerBalance).toString());
-          // console.log("Adding endingDeployerBalance with gasCost => ",endingDeployerBalance.add(gasCost).toString());
-
-          // Assert
-          // assert.equal(endingDeployerBalance, 0);
-          assert.equal(
-            startingContractBalance.add(startingDeployerBalance).toString(),
-            endingDeployerBalance.add(gasCost).toString() - extraAmount
-          );
+          it("emits an event", async () => {
+            expect(bikeRenting.listBikes(bikeModel, bikeColor)).to.emit(
+              "BikeListed"
+            );
+          });
         });
-      });
-      describe("GetExtraPaymentBack", () => {
-        it("reverts when caller is not the owner of money", async () => {
-          expect(bikeRenting.getExtraPaymentBack()).to.be.revertedWith(
-            "BikeRenting__YouAreNotTheOwnerOfThisMoney"
-          );
+        describe("RentBike", () => {
+          const bikeModel = 1;
+          const bikeColor = "red";
+          it("should rent a bike when payment is correct", async () => {
+            const rentAmount = await bikeRenting.getAmount();
+            const extraAmount = await bikeRenting.getExtraAmount();
+            const totalAmount = rentAmount.toNumber() + extraAmount.toNumber();
+            // List a bike for renting
+            await bikeRenting.listBikes(bikeModel, bikeColor);
+
+            // Rent the bike with correct payment
+            const rentTx = await bikeRenting.rentBike(bikeModel, bikeColor, {
+              value: totalAmount,
+            });
+
+            // Retrieve the rented bike from the contract
+            const rentedBike = await bikeRenting.getBike(bikeModel);
+
+            // Assert that the bike status and rentee have been updated correctly
+            assert.equal(rentedBike.bikeStatus, 1, "Incorrect bike status");
+            assert.equal(rentedBike.color, bikeColor, "Incorrect bike color");
+          });
+          it("emits an event", async () => {
+            const rentAmount = await bikeRenting.getAmount();
+            const extraAmount = await bikeRenting.getExtraAmount();
+            const totalAmount = rentAmount.toNumber() + extraAmount.toNumber();
+            expect(
+              bikeRenting.rentBike(bikeModel, bikeColor, { value: totalAmount })
+            ).to.emit("BikeRented");
+          });
+          it("should revert when payment amount is incorrect", async () => {
+            const rentAmount = await bikeRenting.getAmount();
+            const extraAmount = await bikeRenting.getExtraAmount();
+            const incorrectAmount = rentAmount + extraAmount + 1;
+            expect(
+              bikeRenting.rentBike(bikeModel, bikeColor, {
+                value: incorrectAmount,
+              })
+            ).to.be.revertedWith("Incorrect payment amount");
+          });
+          it("should revert when trying to rent an already rented bike", async () => {
+            const rentAmount = await bikeRenting.getAmount();
+            const extraAmount = await bikeRenting.getExtraAmount();
+            const totalAmount = rentAmount.toNumber() + extraAmount.toNumber();
+            await bikeRenting.rentBike(bikeModel, bikeColor, {
+              value: totalAmount,
+            });
+            expect(
+              bikeRenting.rentBike(bikeModel, bikeColor, { value: totalAmount })
+            ).to.be.revertedWith("Bike not available for rent");
+          });
+          it("should return a rented bike", async () => {
+            const rentAmount = await bikeRenting.getAmount();
+            const extraAmount = await bikeRenting.getExtraAmount();
+            const totalAmount = rentAmount.toNumber() + extraAmount.toNumber();
+            await bikeRenting.rentBike(bikeModel, bikeColor, {
+              value: totalAmount,
+            });
+            // Return the rented bike to the owner
+            const returnTx = await bikeRenting.returnBikeToOwner(bikeModel);
+            // Retrieve the returned bike from the contract
+            const returnedBike = await bikeRenting.getBike(bikeModel);
+
+            assert.equal(returnedBike.bikeStatus, 0);
+            assert.equal(returnedBike.bikeRentee, 0);
+
+            // extra payment back to owner...
+          });
+          it("should revert when trying to return an available bike", async () => {
+            expect(bikeRenting.returnBikeToOwner(bikeModel)).to.be.revertedWith(
+              "Bike not rented"
+            );
+          });
+        });
+        describe("Withdraw", () => {
+          it("withdraw Eth from contract", async () => {
+            const rentAmount = await bikeRenting.getAmount();
+            const extraAmount = await bikeRenting.getExtraAmount();
+            const totalAmount = rentAmount.toNumber() + extraAmount.toNumber();
+
+            await bikeRenting.rentBike(10, "red", {
+              value: totalAmount,
+            });
+
+            const startingContractBalance =
+              await bikeRenting.provider.getBalance(bikeRenting.address);
+            const startingDeployerBalance =
+              await bikeRenting.provider.getBalance(deployer.address);
+
+            // Act
+            const txResponse = await bikeRenting.withdraw();
+            const txReceipt = await txResponse.wait(1);
+            const gasCost = txReceipt.gasUsed.mul(txReceipt.effectiveGasPrice);
+
+            const endingContractBalance = await bikeRenting.provider.getBalance(
+              bikeRenting.address
+            );
+            const endingDeployerBalance = await bikeRenting.provider.getBalance(
+              deployer.address
+            );
+
+            const expectedEndingDeployerBalance = startingDeployerBalance
+              .add(startingContractBalance)
+              .sub(gasCost)
+              .sub(extraAmount);
+
+            assert.equal(
+              endingDeployerBalance.toString(),
+              expectedEndingDeployerBalance.toString()
+            );
+          });
         });
       });
     });
